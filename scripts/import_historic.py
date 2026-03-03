@@ -9,8 +9,9 @@ TABLE_NAME = "nav_history"
 
 # Replace with direct Google Drive download links
 FILE_LINKS = [
-    # "https://drive.google.com/uc?export=download&id=FILE_ID"
+    "https://drive.google.com/uc?export=download&id=1ysjCgWoHF6u3-Z8kIKdZUIj7nK9KGb13"
 ]
+
 
 # ===== DB CONNECTION =====
 conn = sqlite3.connect(OUTPUT_DB)
