@@ -7,15 +7,24 @@ from io import BytesIO
 OUTPUT_DB = "historic.db"
 TABLE_NAME = "nav_history"
 
-# Replace with direct Google Drive download links
 FILE_LINKS = [
-    "https://drive.google.com/uc?export=download&id=1ysjCgWoHF6u3-Z8kIKdZUIj7nK9KGb13"
+    # Add all your direct drive download links here
 ]
 
-
-# ===== DB CONNECTION =====
 conn = sqlite3.connect(OUTPUT_DB)
-first_file = True
+cursor = conn.cursor()
+
+# Create table with PRIMARY KEY (prevents duplicates)
+cursor.execute(f"""
+CREATE TABLE IF NOT EXISTS {TABLE_NAME} (
+    scheme_code TEXT,
+    nav_date DATE,
+    nav_value REAL,
+    PRIMARY KEY (scheme_code, nav_date)
+)
+""")
+
+conn.commit()
 
 
 def download_drive_file(url):
@@ -26,51 +35,42 @@ def download_drive_file(url):
 
 
 for file_url in FILE_LINKS:
-    file_data = download_drive_file(file_url)
+    print(f"Processing: {file_url}")
 
-    # Read Excel
+    file_data = download_drive_file(file_url)
     df = pd.read_excel(file_data, engine="openpyxl")
 
-    # Standardize column names
     df.columns = df.columns.str.strip().str.lower()
 
-    # Validate required columns
-    required_cols = ["scheme_code", "date", "nav"]
-    if not all(col in df.columns for col in required_cols):
-        raise ValueError(f"Missing required columns in file: {file_url}")
+    df = df[["scheme_code", "date", "nav"]]
 
-    # Keep only required columns
-    df = df[required_cols]
-
-    # Convert types properly
     df["scheme_code"] = df["scheme_code"].astype(str)
-
     df["nav_date"] = pd.to_datetime(df["date"], errors="coerce").dt.date
     df["nav_value"] = pd.to_numeric(df["nav"], errors="coerce")
 
-    # Drop original columns
     df = df[["scheme_code", "nav_date", "nav_value"]]
+    df = df.dropna()
 
-    # Drop invalid rows
-    df = df.dropna(subset=["nav_date", "nav_value"])
+    # Insert with duplicate ignore
+    for row in df.itertuples(index=False):
+        try:
+            cursor.execute(f"""
+                INSERT OR IGNORE INTO {TABLE_NAME}
+                (scheme_code, nav_date, nav_value)
+                VALUES (?, ?, ?)
+            """, (row.scheme_code, row.nav_date, row.nav_value))
+        except Exception as e:
+            print("Insert error:", e)
 
-    # Insert into DB
-    df.to_sql(
-        TABLE_NAME,
-        conn,
-        if_exists="replace" if first_file else "append",
-        index=False,
-        chunksize=50000
-    )
-
-    first_file = False
+    conn.commit()
 
 # Create index for performance
-conn.execute("""
+cursor.execute(f"""
 CREATE INDEX IF NOT EXISTS idx_scheme_date
-ON nav_history (scheme_code, nav_date)
+ON {TABLE_NAME} (scheme_code, nav_date)
 """)
 
+conn.commit()
 conn.close()
 
-print("✅ historic.db created successfully")
+print("✅ historic.db created successfully with duplicates removed")
