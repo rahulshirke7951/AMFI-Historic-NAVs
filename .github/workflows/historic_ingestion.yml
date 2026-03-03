@@ -1,0 +1,31 @@
+name: Historic Ingestion
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v3
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.10"
+
+      - name: Install dependencies
+        run: |
+          pip install pandas openpyxl requests
+
+      - name: Run historic import
+        run: |
+          python scripts/import_historic.py
+
+      - name: Upload DB Artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: historic-db
+          path: historic.db
