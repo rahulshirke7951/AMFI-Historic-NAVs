@@ -36,7 +36,6 @@ def download_drive_file(url):
     response = requests.get(url)
     response.raise_for_status()
 
-    # Detect HTML instead of file (Drive permission issue)
     if b'<!DOCTYPE html>' in response.content[:100]:
         raise Exception(
             f"Google Drive returned HTML instead of file. "
@@ -49,7 +48,13 @@ def download_drive_file(url):
 # ==========================
 # DATABASE PROCESS
 # ==========================
+print("Starting historic ingestion...")
+
 with sqlite3.connect(OUTPUT_DB) as conn:
+
+    # Improve performance during bulk insert
+    conn.execute("PRAGMA journal_mode = WAL;")
+    conn.execute("PRAGMA synchronous = NORMAL;")
 
     # Create table with PRIMARY KEY (duplicate protection)
     conn.execute(f"""
@@ -65,20 +70,18 @@ with sqlite3.connect(OUTPUT_DB) as conn:
 
     for file_url in FILE_LINKS:
         try:
-            print(f"Processing: {file_url}")
+            print(f"\nProcessing: {file_url}")
 
             file_data = download_drive_file(file_url)
             df = pd.read_excel(file_data, engine="openpyxl")
 
-            # Standardize columns
             df.columns = df.columns.str.strip().str.lower()
 
             required_cols = {"scheme_code", "date", "nav"}
             if not required_cols.issubset(df.columns):
-                print(f"❌ Missing columns in file. Found: {df.columns.tolist()}")
+                print(f"❌ Missing columns. Found: {df.columns.tolist()}")
                 continue
 
-            # Clean & transform
             df["scheme_code"] = df["scheme_code"].astype(str)
             df["nav_date"] = pd.to_datetime(df["date"], errors="coerce").dt.date
             df["nav_value"] = pd.to_numeric(df["nav"], errors="coerce")
@@ -90,7 +93,7 @@ with sqlite3.connect(OUTPUT_DB) as conn:
 
             print(f"Inserting {row_count} rows...")
 
-            # Bulk insert via temp table (fast)
+            # Fast bulk insert
             df.to_sql("temp_table", conn, if_exists="replace", index=False)
 
             conn.execute(f"""
@@ -105,10 +108,21 @@ with sqlite3.connect(OUTPUT_DB) as conn:
         except Exception as e:
             print(f"❌ Error processing {file_url}: {e}")
 
-    # Create index for performance
+    # Create index
+    print("Creating index...")
     conn.execute(f"""
     CREATE INDEX IF NOT EXISTS idx_scheme_date
     ON {TABLE_NAME} (scheme_code, nav_date)
     """)
 
-print(f"✅ historic.db updated successfully. Total rows processed: {total_rows}")
+print(f"\nInserted rows processed: {total_rows}")
+
+# ==========================
+# VACUUM (Database Optimization)
+# ==========================
+print("\nOptimizing database (VACUUM)...")
+
+with sqlite3.connect(OUTPUT_DB) as conn:
+    conn.execute("VACUUM;")
+
+print("✅ historic.db created and optimized successfully")
