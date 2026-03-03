@@ -2,18 +2,25 @@ import pandas as pd
 import sqlite3
 import requests
 from io import BytesIO
+import os
 
-# ===== CONFIG =====
-OUTPUT_DB = "historic.db"
+# ==========================
+# CONFIG
+# ==========================
+OUTPUT_DB = "output/historic.db"
 TABLE_NAME = "nav_history"
 
-# Add all your direct drive download links here
-
+# Add your direct Google Drive download links here
 FILE_LINKS = [
     "https://drive.google.com/uc?export=download&id=1ysjCgWoHF6u3-Z8kIKdZUIj7nK9KGb13"
-]
+ ]
 
+# Ensure output folder exists
+os.makedirs("output", exist_ok=True)
 
+# ==========================
+# DB CONNECTION
+# ==========================
 conn = sqlite3.connect(OUTPUT_DB)
 cursor = conn.cursor()
 
@@ -26,7 +33,6 @@ CREATE TABLE IF NOT EXISTS {TABLE_NAME} (
     PRIMARY KEY (scheme_code, nav_date)
 )
 """)
-
 conn.commit()
 
 
@@ -37,6 +43,9 @@ def download_drive_file(url):
     return BytesIO(response.content)
 
 
+# ==========================
+# PROCESS FILES
+# ==========================
 for file_url in FILE_LINKS:
     print(f"Processing: {file_url}")
 
@@ -54,20 +63,17 @@ for file_url in FILE_LINKS:
     df = df[["scheme_code", "nav_date", "nav_value"]]
     df = df.dropna()
 
-    # Insert with duplicate ignore
+    # Insert rows with duplicate protection
     for row in df.itertuples(index=False):
-        try:
-            cursor.execute(f"""
-                INSERT OR IGNORE INTO {TABLE_NAME}
-                (scheme_code, nav_date, nav_value)
-                VALUES (?, ?, ?)
-            """, (row.scheme_code, row.nav_date, row.nav_value))
-        except Exception as e:
-            print("Insert error:", e)
+        cursor.execute(f"""
+            INSERT OR IGNORE INTO {TABLE_NAME}
+            (scheme_code, nav_date, nav_value)
+            VALUES (?, ?, ?)
+        """, (row.scheme_code, row.nav_date, row.nav_value))
 
     conn.commit()
 
-# Create index for performance
+# Create performance index
 cursor.execute(f"""
 CREATE INDEX IF NOT EXISTS idx_scheme_date
 ON {TABLE_NAME} (scheme_code, nav_date)
@@ -76,4 +82,4 @@ ON {TABLE_NAME} (scheme_code, nav_date)
 conn.commit()
 conn.close()
 
-print("✅ historic.db created successfully with duplicates removed")
+print("✅ historic.db created successfully")
