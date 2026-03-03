@@ -7,9 +7,12 @@ from io import BytesIO
 OUTPUT_DB = "historic.db"
 TABLE_NAME = "nav_history"
 
+# Add all your direct drive download links here
+
 FILE_LINKS = [
-    # Add all your direct drive download links here
+    "https://drive.google.com/uc?export=download&id=1ysjCgWoHF6u3-Z8kIKdZUIj7nK9KGb13"
 ]
+
 
 conn = sqlite3.connect(OUTPUT_DB)
 cursor = conn.cursor()
